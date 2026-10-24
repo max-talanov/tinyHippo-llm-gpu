@@ -15,7 +15,7 @@ not replay or consolidation on the GPU (that is Phase 2, scored over ≥2 seeds)
 ### The simulator, upgraded from the July port's `90f87ab`
 
 `compat_recheck.py` reran each behaviour the July port (`tfatykhov/tinyHippo@feat/gpu-port`) worked around,
-on both the old and the new build. Upstream's 116 newer commits change none of them:
+on both the old and the new build. Upstream's 116 newer commits change none of the behaviours tested here:
 
 | Behaviour | 90f87ab | ba52eb9 | Consequence for the backend |
 |---|---|---|---|
@@ -72,8 +72,8 @@ both simulators integrate with the same forward-Euler step.
 `delay_sign_check.py`: weights of both signs and per-synapse delays given as arrays arrive with the right sign
 and size; delays are stored rounded to the 0.1 ms grid (5.33 → 5.3, 7.77 → 7.8) on both simulators.
 Neuron-to-neuron latency, spike to spike, is delay + 0.1 ms on both. Two offsets differ but do not accumulate:
-a `spike_generator` emits one step later on the GPU (its target fires at 11.2 ms vs 11.1 ms), and the GPU
-multimeter samples `V_m` one step later.
+a `spike_generator` emits one step later on the GPU (its target fires at 11.2 ms vs 11.1 ms), and the
+multimeter traces are consistent with the GPU sampling `V_m` one step later.
 
 ### Theta and ripple drive without `sinusoidal_poisson_generator`
 
@@ -112,19 +112,19 @@ simulator's connection machinery, not the model.
 
 | Operation | Time |
 |---|---:|
-| Create + Connect + Calibrate, 80.2M synapses | 0.2 s (GPU memory 1.70 GB) |
-| Query CA1 PYR → EC LII (STC hook), 600,250 synapses | 0.55 s |
+| Create + Connect + Calibrate, 80.2M synapses, timed to the first synchronous read | 0.2 s (Connect 0.02, Calibrate 0.17, read 0.02); 1.70 GB resident |
+| Query CA1 PYR → EC LII (STC hook), 600,250 synapses | 0.58 s |
 | Query EC LV → mPFC (association hook), 28,800 synapses | 0.02 s |
-| Query CA3 SUP → CA1 PYR (Schaffer), 27,597,500 synapses | 1.99 s |
+| Query CA3 SUP → CA1 PYR (Schaffer), 27,597,500 synapses | 2.09 s |
 | Read 600k weights / all 27.6M Schaffer weights | 0.003 s / 0.115 s |
 | Write one value to 1M synapses | 0.002 s |
 | Write 600k per-synapse weights from an array (after `b0c1f1a`), read back exact | 0.003 s |
 | Same write by the July port's quantised workaround (101 calls) | 0.033 s |
-| Simulate 100 ms (~10 Hz everywhere), one call / 1 ms chunks with rate updates | 1.18 s / 1.30 s |
+| Simulate 100 ms (~10 Hz everywhere), one call / 1 ms chunks with rate updates | 1.35 s / 1.42 s (1.18 / 1.30 in an earlier run) |
 
 For comparison, upstream RESULTS §24: on MN5 CPU the three hook lookups of JOB H10 took 5.3 h before the
 source-side fix and minutes after it; a 12% run simulates 14 s of model time in about 5.4 h on 50 cores. The
-GPU's 1.2 s per 100 ms on this placeholder network suggests two orders of magnitude, but the real model's
+GPU's 1.2-1.4 s per 100 ms on this placeholder network suggests two orders of magnitude, but the real model's
 speed is a Phase 2 measurement: its activity and drive structure differ.
 
 Two findings for the backend:
@@ -132,9 +132,11 @@ Two findings for the backend:
 - **NEST GPU's `GetConnections(source, target)` allocates three device arrays of n_source × n_target
   entries (24 bytes per pair), whatever the synapse count.** CA3 SUP × CA1 PYR at 12% is 1.75e9 pairs
   (~42 GB) and runs out of memory; the STC query (6.6e8 pairs, ~16 GB) only just fits on 16 GB. The backend
-  splits the source range into chunks of ≤ 1e8 pairs (`get_conns_direct`), which costs little because each
-  chunk is one pass over the connection array. A filter-based `getConnections` in the NEST GPU branch would
-  remove the problem.
+  splits the source range into chunks of ≤ 1e8 pairs (`get_conns_direct`, ≤ 2.4 GB of scratch), which costs
+  little because each chunk is one pass over the connection array. So the 1.70 GB resident figure is not the
+  whole memory budget: an unchunked query needs n_src × n_tgt × 24 B on top, and that, not the network,
+  is what would stop 25% or 100% fitting on one card. A filter-based `getConnections` in the NEST GPU branch
+  would remove the problem.
 - **The stock Python wrappers convert ids and values element by element** (0.094 s vs 0.003 s for 600k
   weights). The backend calls the C entry points with numpy buffers.
 
@@ -143,7 +145,8 @@ made `SetConnectionFloatParamDistr` segfault, so per-synapse arrays write exactl
 
 ### D1
 
-Joint plan §6 sets four conditions for continuing on the GPU. At the simulator level all four hold:
+Joint plan §6 sets four conditions for continuing on the GPU. Three hold at the simulator level; for the
+fourth, its generator prerequisite holds and replay ρ itself is deferred to Phase 2:
 
 | D1 condition | Result |
 |---|---|
@@ -152,7 +155,7 @@ Joint plan §6 sets four conditions for continuing on the GPU. At the simulator 
 | Connection get/set for 1M synapses under ~1 min at 12% | Milliseconds; queries ≤ 2 s once chunked |
 | Theta and ripple reproduced well enough to keep replay ρ in band | Theta exact; ripple rate and phase exact with midpoint sampling, modulation −5% vs CPU. Replay ρ itself is untested on the current model |
 
-Recommendation: D1 passes; start S0 (shim) and Phase 2. The open risk moves to Phase 2: replay ρ, DG
+Recommendation: treat D1 as passed for starting S0 (shim) and Phase 2, with replay ρ as Phase 2's first gate. The open risk moves to Phase 2: replay ρ, DG
 sparsity and the home-group code on the full current model, compared with CPU NEST over ≥2 seeds. The
 backend requirements found here: `izhikevich_het` wherever `--het` is on, rate sampling at chunk midpoints with
 1 ms chunks, one Poisson generator per shared-rate drive, chunked connection queries, direct C calls with numpy

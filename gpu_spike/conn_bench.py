@@ -56,6 +56,8 @@ def get_conns_direct(src, tgt, max_pairs=100_000_000):
         if ngpu.GetErrorCode() != 0:
             raise RuntimeError(ngpu.GetErrorMessage())
         if n.value:
+            # The host buffer behind ptr is never freed (nor by the stock
+            # wrapper); fine for a benchmark, not for a long-lived backend.
             parts.append(np.ctypeslib.as_array(ptr, shape=(n.value,)).copy())
     return np.concatenate(parts) if parts else np.zeros(0, np.int64)
 
@@ -152,10 +154,14 @@ def main():
     for pop in pops.values():
         ngpu.ActivateRecSpikeTimes(pop, 200)
     _, res["calibrate_s"] = timed(ngpu.Calibrate)
+    # Kernel launches return before the work finishes. A query copies its
+    # result to the host, so it cannot complete before the build has.
+    _, res["first_query_s"] = timed(get_conns_direct, pops["EC LV"], pops["mPFC"])
     res["gpu_mem_used_gb"] = gpu_mem_used_gb() - mem0
     res["host_mem_peak_gb"] = ngpu.getCUDAMemHostPeak() / 1e9
     print(f"built {res['n_neurons']:,} neurons, {n_syn:,} synapses: "
-          f"connect {res['connect_s']:.1f}s, calibrate {res['calibrate_s']:.1f}s, "
+          f"connect {res['connect_s']:.2f}s, calibrate {res['calibrate_s']:.2f}s, "
+          f"first synchronous query {res['first_query_s']:.2f}s, "
           f"GPU memory {res['gpu_mem_used_gb']:.2f} GB")
 
     # ---- connection queries ------------------------------------------------
