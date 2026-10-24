@@ -33,7 +33,7 @@ proposed in §7, not applied.
 | NEST GPU upstream | `nest/nest-gpu` `main` is 116 commits ahead (`ba52eb9`, 2026-10-20). The only change to `izhikevich.{h,cu}` is the clang-format commit `6f3e609`, so the parameter layout in §5 holds at HEAD |
 | CPU | Ryzen 9 5900X, 12 cores / 24 threads, 32 GB RAM |
 | CPU NEST reference | NEST 3.9.0 (Docker image `nest/nest-simulator:3.9`) runs the current `replay_scaled.py` at 1% (§6) |
-| MN5 | Not reachable from this workstation, so GPU allocation on `uab100` / `acc_resc` is still unverified |
+| MN5 | No MN5 host is configured on this workstation, so GPU allocation on `uab100` / `acc_resc` is still unverified |
 
 ## 3. The earlier GPU port
 
