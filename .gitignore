@@ -211,3 +211,8 @@ calibration_output/
 
 # macOS Finder metadata
 .DS_Store
+
+# local run output (CLAUDE.md: never committed)
+out/
+res/
+replay_output_*/
