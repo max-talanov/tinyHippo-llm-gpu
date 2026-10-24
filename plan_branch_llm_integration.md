@@ -4,12 +4,13 @@ Connect the tinyHippo model to an LLM so that the model's defining property,
 information that is encoded, replayed during sleep and consolidated to cortex while
 keeping its identity, does useful work for the LLM.
 
-- **Branch:** `llm-integration`, created from `main` at the commit where the gate
-  below passes.
+- **Repo:** `max-talanov/tinyHippo-llm-gpu` (fork of `tinyHippo`, see
+  [plan_llm_gpu_joint.md](plan_llm_gpu_joint.md) §0). Branch `llm-integration` is created here from the
+  commit where the gate below passes, after merging it from `upstream`.
 - **Backend and schedule:** see the joint plan [plan_llm_gpu_joint.md](plan_llm_gpu_joint.md)
   (CPU NEST is the reference; NEST GPU is conditional on its decisions D1, D2, D4).
-- **Sibling branch:** `bio-plasticity` ([plan_branch_bio_plasticity.md](plan_branch_bio_plasticity.md)),
-  created from the same gate commit.
+- **Sibling work:** `bio-plasticity` ([plan_branch_bio_plasticity.md](plan_branch_bio_plasticity.md)) is developed
+  in `tinyHippo`, on CPU NEST, from the same gate commit.
 
 ## 0. Entry condition: pattern identity survives consolidation
 
@@ -25,7 +26,7 @@ would not be meaningful.
 
 **State on 2026-10-24:** the gate is not met. `--cortex-group-frac`, `--mf-group-frac` and the
 EC LII->CA3 path are implemented; JOB H15 (G1), H16 (EC LII path) and H17 (G2 probe) at 12% decide it.
-Do not fork this branch until they pass.
+Do not create `llm-integration` until they pass and the gate commit is merged here from `upstream`.
 
 **Exception:** step L0 below has no dependency on the model and can start now.
 
@@ -182,7 +183,7 @@ text.
 
 ## 6. First steps
 
-- [ ] Now, on a short-lived branch or `main`: L0 skeleton, stub backend, benchmark
+- [ ] Now, on branch `llm-l0` in this repo: L0 skeleton, stub backend, benchmark
 - [ ] Once the gate passes: `git switch -c llm-integration <gate-commit>` and push
 - [ ] `--pattern-file` (L1) and the random-code G1 check at 1%
 - [ ] Phase 0 NEST GPU spike ([nest_gpu_migration.md](nest_gpu_migration.md)), in parallel with L0

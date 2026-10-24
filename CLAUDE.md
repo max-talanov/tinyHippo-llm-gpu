@@ -1,4 +1,13 @@
-# tinyHippo
+# tinyHippo-llm-gpu
+
+> **This repo is a fork of [max-talanov/tinyHippo](https://github.com/max-talanov/tinyHippo)** (`upstream` remote),
+> created 2026-10-24 for two things that do not belong in the science repo: a **NEST GPU backend** and an
+> **LLM episodic-memory integration**. Read [HANDOFF.md](HANDOFF.md) first, then
+> [plan_llm_gpu_joint.md](plan_llm_gpu_joint.md). Do not change model behaviour here; science changes go to
+> `tinyHippo` and are merged in with `git merge upstream/main`. The rest of this file is inherited from
+> upstream and still applies.
+
+## tinyHippo (inherited project context)
 
 ## Project goal
 

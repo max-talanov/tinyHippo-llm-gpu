@@ -1,17 +1,35 @@
 # Joint plan: LLM integration on NEST GPU
 
-Status: proposal, 2026-10-24. Merges [plan_branch_llm_integration.md](plan_branch_llm_integration.md)
+Status: proposal, 2026-10-24; repo layout updated the same day. Merges [plan_branch_llm_integration.md](plan_branch_llm_integration.md)
 (L0-L6) with [nest_gpu_migration.md](nest_gpu_migration.md) (Phases 0-5). Those two stay the
 detailed references; this document fixes the **order, the merge points and the go/no-go gates** for the
 part of the work that needs both.
 
-Scope reminder (migration doc §0): only `llm-integration` targets NEST GPU. `bio-plasticity` stays on CPU NEST.
+## 0. Repository layout (decided 2026-10-24)
+
+LLM and GPU work lives in its own repo, **`max-talanov/tinyHippo-llm-gpu`** (this one), created from a full
+clone of `max-talanov/tinyHippo` at `06a3a62`. Remotes: `origin` = this repo, `upstream` = `tinyHippo`.
+
+| Repo | Owns |
+|---|---|
+| `tinyHippo` (upstream) | The science: model, gate runs (JOB H15-H17), `RESULTS.md`, **`bio-plasticity` on CPU NEST**. No LLM or GPU code. |
+| `tinyHippo-llm-gpu` (here) | `simbackend` shim, NEST GPU backend, `llm/` memory service, benchmarks, GPU-side results |
+
+Sync policy:
+- **Science flows downstream.** `git fetch upstream && git merge upstream/main` at least weekly and after every
+  gate-relevant commit (H15-H17 outcomes, new `*-group-frac` flags). Resolve conflicts here, never edit upstream from here.
+- **Do not change model behaviour here.** New model features go to `tinyHippo` first. Here, edits to
+  `replay_scaled.py` are limited to the mechanical shim re-routing and backend hooks, so merges stay small.
+- **Results from this repo** go in a new `RESULTS_llm_gpu.md` (numbered from §1), not in upstream's `RESULTS.md`.
+- Upstreaming the shim is optional (decision D0 below).
+
+Scope reminder (migration doc §0): only this repo targets NEST GPU. `bio-plasticity` stays on CPU NEST in `tinyHippo`.
 
 ## 1. Where things stand (2026-10-24)
 
 - Gate G1/G2/G3 is **not met**. Grouping every projection on the pattern path (`--cortex-group-frac`,
   `--mf-group-frac`, EC LII→CA3) is implemented; the 12% runs that decide it (JOB H15 G1, JOB H16 EC LII
-  path, JOB H17 G2 probe) are queued on MN5. Neither branch can fork until they pass.
+  path, JOB H17 G2 probe) are queued on MN5. `tinyHippo-llm-gpu` can start S0/S1/L0 now, but L1+ waits for them to pass and be merged from `upstream`.
 - CPU runs are **bit-identical at a fixed seed, config and thread count** (RESULTS.md §29). This makes
   the backend shim cheap to verify (hash the HDF5), but a GPU port will not be bit-identical, so GPU
   equivalence is statistical only.
@@ -50,27 +68,32 @@ better than a persistent CPU server?" That is what Phase 0 + D2 below decide.
    number of storable patterns at build time. An LLM `remember()` stream needs new memories after the
    network is built. See §6, decision D3.
 
-## 4. Workstreams and branches
+## 4. Workstreams and branches (inside this repo)
 
 ```
-main ──●──────── Phase 1: simbackend shim (CPU, bit-identical) ────●── gate commit (G1-G3 pass)
-        \                                                            \
-         nest-gpu ── Phase 0 spike ── Phase 2 core net ── Phase 3 hooks    llm-integration ── L1 ... L5
-                          │                  │                │               ▲
-                          D1                 D2               └──── merges ───┘ (D3, D4)
-         L0 (stub backend, bench) runs on a short-lived branch / main throughout
+upstream/main ──●─────────────────────────●── gate commit (G1-G3 pass in tinyHippo)
+                 │ merged weekly            │ merged here
+this repo main ──●── shim (S0) ──────────────●──────────────── llm-integration L1 ... L5
+                  \                                              ▲
+                   nest-gpu ── Phase 0 ── Phase 2 ── Phase 3 ─────┘ (merge on D2/D4)
+                   L0 (stub backend, bench) on branch `llm-l0`, merged early
 ```
 
 | Stream | Branch | Depends on | Output |
 |---|---|---|---|
-| S0: shim | `main` | nothing | `simbackend.py`, `--backend nest` default, HDF5 hash unchanged |
-| S1: GPU spike and backend | `nest-gpu` (from `main` after S0) | S0 | `--backend nestgpu`, equivalence report |
-| S2: LLM service | `llm-integration` (from the gate commit); L0 earlier on `main` | gate for L1+; none for L0 | `llm/` service, benchmark, codec |
-| S3: bio-plasticity | `bio-plasticity` | gate | CPU only, no overlap with S1/S2 except the shim |
+| S0: shim | branch `shim`, merged to this repo's `main` | nothing | `simbackend.py`, `--backend nest` default, HDF5 hash unchanged |
+| S1: GPU spike and backend | branch `nest-gpu` (Phase 0 scripts need no shim) | S0 for Phase 2+ | `--backend nestgpu`, equivalence report |
+| S2: LLM service | branch `llm-l0` now; `llm-integration` for L1+ once the gate commit is merged from `upstream` | gate for L1+; none for L0 | `llm/` service, benchmark, codec |
+| S3: bio-plasticity | **`tinyHippo` repo**, not here | gate | CPU only; shares nothing with S1/S2 |
 
-Rules to keep the branches mergeable: all backend-specific code behind `simbackend`; new model features
-(`--*-group-frac`, hooks) stay behind flags; `main` is merged into `nest-gpu` and `llm-integration`
-after every gate-relevant commit.
+Rules to keep this repo mergeable with upstream: all backend-specific code behind `simbackend`; new model
+features (`--*-group-frac`, hooks) are added upstream, behind flags; `upstream/main` is merged into `main` and
+then into `nest-gpu` / `llm-integration` after every gate-relevant commit.
+
+**Decision D0 (open): upstream the shim?** The shim touches ~190 call sites in `replay_scaled.py` and will
+conflict with every science change merged from upstream. Recommended: land S0 in `tinyHippo` first as a
+behaviour-neutral PR (bit-identical gate), then merge it here, and only keep GPU/LLM code in this repo.
+Default until decided: develop it here and merge upstream weekly.
 
 ## 5. Schedule and gates
 
@@ -175,4 +198,5 @@ the CPU reference in a new RESULTS.md section (do not edit older sections).
   connection get/set benchmark; write the numbers into a RESULTS.md section
 - [ ] L0 skeleton and benchmark (`llm/`), independent of everything else
 - [ ] Decide D1 at the end of week 1, then start S0 (shim) regardless of D1: the shim is useful for CPU too
-- [ ] Wait for H15-H17 before forking `llm-integration`; do not fork on a guess
+- [ ] Wait for H15-H17 in `tinyHippo`; merge the gate commit from `upstream` before starting `llm-integration` L1
+- [ ] Decide D0 (upstream the shim or not)

@@ -1,24 +1,27 @@
 # Migrating tinyHippo to NEST GPU: options and plan
 
 Status: proposal, revised 2026-10-24 (first written 2026-10-09). The order, merge points and
-go/no-go gates with the LLM branch are in [plan_llm_gpu_joint.md](plan_llm_gpu_joint.md). Based on a survey of how `replay_scaled.py` and `tiny.py` use
+go/no-go gates with the LLM work are in [plan_llm_gpu_joint.md](plan_llm_gpu_joint.md). Based on a survey of how `replay_scaled.py` and `tiny.py` use
 NEST, plus a read of the `nest/nest-gpu` source (`pythonlib/nestgpu.py`, `src/`, `doc/`).
 Items marked **[verify]** were not confirmed and are the first things the Phase 0 spike must settle.
 
-## 0. Scope: which branch uses which backend
+## 0. Scope: which repo uses which backend
+
+This plan is implemented in **`max-talanov/tinyHippo-llm-gpu`** (a fork of `tinyHippo`, layout and sync policy in
+[plan_llm_gpu_joint.md](plan_llm_gpu_joint.md) §0). `tinyHippo` itself stays CPU NEST.
 
 Decision (2026-10-09), proposed by the project owner and refined here:
 
-| Branch | Backend | Why |
+| Where | Backend | Why |
 |---|---|---|
-| `bio-plasticity` | **CPU NEST**, no GPU | Needs per-synapse tag state, pluggable `TagElement` backends, graded `V_seg` tag amplitude and possibly multi-compartment NESTML neurons. NEST GPU has one pair-STDP model and group-level neuron parameters. Its P1 step must reproduce `main` exactly, which is easiest on the backend that produced `main`. |
-| `llm-integration` | **NEST GPU, conditional on Phase 0** | The persistent sim server and the recall-latency target (under 60 s) are where simulation speed matters. It needs the full consolidation stack, so the GPU backend must first reproduce G1-G3. At 1% (~8k neurons) a GPU may not beat CPU, so the choice is made at L3 from measurements. |
+| `bio-plasticity` (in `tinyHippo`) | **CPU NEST**, no GPU | Needs per-synapse tag state, pluggable `TagElement` backends, graded `V_seg` tag amplitude and possibly multi-compartment NESTML neurons. NEST GPU has one pair-STDP model and group-level neuron parameters. Its P1 step must reproduce `main` exactly, which is easiest on the backend that produced `main`. |
+| `llm-integration` (in `tinyHippo-llm-gpu`) | **NEST GPU, conditional on Phase 0** | The persistent sim server and the recall-latency target (under 60 s) are where simulation speed matters. It needs the full consolidation stack, so the GPU backend must first reproduce G1-G3. At 1% (~8k neurons) a GPU may not beat CPU, so the choice is made at L3 from measurements. |
 
 Current state of the entry gate (2026-10-24): G1/G2/G3 are **not yet met**; JOB H15-H17 (12%) are the
 deciding runs. This plan does not wait for them: Phases 0-1 only need `main` as it is.
 
 Consequences:
-- The Phase 1 backend shim lands on `main` **before** the branches fork, so each branch selects `--backend nest` or `--backend nestgpu` and stays mergeable.
+- The Phase 1 backend shim keeps the CPU path bit-identical, so this repo can keep merging `upstream/main` and select `--backend nest` or `--backend nestgpu`. Whether the shim is upstreamed is joint-plan decision D0.
 - Phase 0 runs now, alongside L0 (which has no model dependency).
 - If Phase 0 fails its gate (per-neuron `b`, connection get/set cost), `llm-integration` stays on CPU too.
 - Results from the two backends are not directly comparable; any GPU-derived number needs the Phase 2/3 equivalence check cited next to it.
